@@ -118,46 +118,6 @@ elif analysis_type == 'Grade Analysis':
                 st.pyplot(fig_line)
                 plt.close(fig_line)
 
-    # --- 시험을 가장 잘 볼 것으로 예측되는 학생 ---
-    st.subheader('🏆 Top Predicted Student for Next Exam (by Subject)')
-    st.write("Based on linear regression prediction, here are the students likely to score highest in the next exam for each subject.")
-
-    top_predicted_students = {}
-
-    for subject_eng in subjects_english:
-        max_predicted_score = -1
-        top_student_name = "N/A"
-
-        for student_name in df.index:
-            exam_columns = [col for col in df.columns if col.startswith(f'{subject_eng}_Exam_')]
-            if len(exam_columns) >= 2: # 최소 2개 이상의 시험 데이터가 있어야 예측 가능
-                subject_scores = df.loc[student_name, exam_columns].astype(float)
-                X = np.array(range(1, len(subject_scores) + 1)).reshape(-1, 1)
-                y = subject_scores.values
-
-                model = LinearRegression()
-                try:
-                    model.fit(X, y)
-                    next_exam_num = num_exams + 1
-                    predicted_score = model.predict(np.array([[next_exam_num]]))
-                    predicted_score = np.clip(predicted_score[0], 0, 100) # 0-100 범위 제한
-
-                    if predicted_score > max_predicted_score:
-                        max_predicted_score = predicted_score
-                        top_student_name = student_name
-                except ValueError:
-                    # 데이터가 너무 적거나 문제가 있는 경우 (예: 모든 점수가 동일하여 분산이 0)
-                    pass # 이 학생은 예측에서 제외
-
-        if top_student_name != "N/A":
-            top_predicted_students[subject_eng] = f'**{top_student_name}** ({max_predicted_score:.2f} points)'
-        else:
-            top_predicted_students[subject_eng] = "No prediction possible (insufficient data for all students)"
-
-    for subject, info in top_predicted_students.items():
-        st.write(f"- **{subject}**: {info}")
-
-
 # --- 3. Grade Prediction (성적 예측) ---
 elif analysis_type == 'Grade Prediction':
     st.header('🔮 Next Exam Grade Prediction')
@@ -235,6 +195,49 @@ elif analysis_type == 'Grade Prediction':
 
         # 예측 결과 요약
         st.write("---")
-        st.subheader('Prediction Summary')
+        st.subheader('Prediction Summary for Selected Student')
         for subject, pred_score in predictions.items():
             st.write(f"**{subject}**: {pred_score}")
+
+    # --- 시험을 가장 잘 볼 것으로 예측되는 학생 (성적 예측 섹션으로 이동) ---
+    st.write("---") # 구분선
+    st.subheader('🏆 Top Predicted Student for Next Exam (by Subject, all students)')
+    st.write(f"Based on linear regression prediction and '{selected_difficulty}' difficulty, here are the students likely to score highest in the next exam for each subject across all students.")
+
+    top_predicted_students = {}
+
+    for subject_eng in subjects_english:
+        max_predicted_score = -1
+        top_student_name = "N/A"
+
+        for student_name in df.index:
+            exam_columns = [col for col in df.columns if col.startswith(f'{subject_eng}_Exam_')]
+            if len(exam_columns) >= 2: # 최소 2개 이상의 시험 데이터가 있어야 예측 가능
+                subject_scores = df.loc[student_name, exam_columns].astype(float)
+                X = np.array(range(1, len(subject_scores) + 1)).reshape(-1, 1)
+                y = subject_scores.values
+
+                model = LinearRegression()
+                try:
+                    model.fit(X, y)
+                    next_exam_num = num_exams + 1
+                    predicted_score = model.predict(np.array([[next_exam_num]]))
+                    
+                    # 난이도 조절 반영
+                    predicted_score_adjusted = predicted_score[0] + difficulty_adjustment
+                    predicted_score_adjusted = np.clip(predicted_score_adjusted, 0, 100) # 0-100 범위 제한
+
+                    if predicted_score_adjusted > max_predicted_score:
+                        max_predicted_score = predicted_score_adjusted
+                        top_student_name = student_name
+                except ValueError:
+                    # 데이터가 너무 적거나 문제가 있는 경우 (예: 모든 점수가 동일하여 분산이 0)
+                    pass # 이 학생은 예측에서 제외
+
+        if top_student_name != "N/A":
+            top_predicted_students[subject_eng] = f'**{top_student_name}** ({max_predicted_score:.2f} points)'
+        else:
+            top_predicted_students[subject_eng] = "No prediction possible (insufficient data for all students)"
+
+    for subject, info in top_predicted_students.items():
+        st.write(f"- **{subject}**: {info}")
