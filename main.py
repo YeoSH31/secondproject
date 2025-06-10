@@ -34,7 +34,7 @@ places = [
         "name": "메이지 신궁",
         "location": [35.6764, 139.6993],
         "description": "울창한 숲 속에 자리한 신사로, 고요한 분위기 속에서 산책하기 좋아요.",
-        "image_url": "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Meiji_Shrine_2010.JPG/640px-Meiji_Shrine_2010.JPG"
+        "image_url": "https://lh3.googleusercontent.com/gps-cs-s/AC9h4nrtIZd1DAKL90f9pZZ2PoskK5EnVL0A1JLHygu9-ihUFYykfzCTCNotE5eJaqHOPixb9aF1t7GaSok-EOO0oqLmnIBxl3Z7e9NafLOFvfleSyzamo9gWZ7enqIwuXNEhTDR1VA=w270-h312-n-k-no"
     },
     {
         "name": "신주쿠 교엔",
