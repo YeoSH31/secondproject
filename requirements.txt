@@ -3,3 +3,4 @@ streamlit-folium
 yfinance
 pandas
 plotly
+streamlit>=1.35
