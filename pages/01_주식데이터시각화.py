@@ -1,92 +1,158 @@
 # app.py
 # ────────────────────────────────────────────────────────────────────
-# 3년간 글로벌 시가총액 Top-10 기업 주가 시각화 (Streamlit Cloud용)
+# 최근 3년 세계 시가총액 Top-10 기업 주가 시각화 + 단기 가격 예측 데모
 # ────────────────────────────────────────────────────────────────────
 import streamlit as st
 import yfinance as yf
 import pandas as pd
 from datetime import date, timedelta
 
-# ───── 기본 설정 ─────
-st.set_page_config(
-    page_title="Top-10 Global Market-Cap Stocks: 3-Year Trend",
-    layout="wide"
-)
-st.title("📈 최근 3년 세계 시가총액 상위 10개 기업 주가 추세")
+# Prophet (forecast) ────────────────────────────────────────────────
+try:
+    from prophet import Prophet
+    PROPHET_OK = True
+except ImportError:
+    PROPHET_OK = False
 
-# 2025-06-10 기준 시가총액 Top-10 (Investing.com 등 참고)
+# ───── 기본 설정 ─────
+st.set_page_config(page_title="Top-10 Market-Cap Stocks: Trend & Forecast",
+                   layout="wide")
+st.title("🌍 글로벌 시가총액 Top-10 기업\n최근 3년 추세 ＋ 🔮 단기 예측")
+
+# Top-10 (2025-06-10 기준)
 TICKERS = {
     "Apple (AAPL)": "AAPL",
     "Microsoft (MSFT)": "MSFT",
     "NVIDIA (NVDA)": "NVDA",
     "Alphabet (GOOGL)": "GOOGL",
     "Amazon (AMZN)": "AMZN",
-    "Saudi Aramco (2222.SR)": "2222.SR",   # 사우디 거래소
+    "Saudi Aramco (2222.SR)": "2222.SR",
     "Meta Platforms (META)": "META",
-    "Berkshire Hathaway (BRK-B)": "BRK-B",  # B주 사용
+    "Berkshire Hathaway (BRK-B)": "BRK-B",
     "Broadcom (AVGO)": "AVGO",
     "Tesla (TSLA)": "TSLA",
 }
+# 거시 변수: S&P 500, 10-Year Treasury Yield, WTI
+MACRO_TICKERS = {
+    "sp500": "^GSPC",
+    "tnx"  : "^TNX",   # 10-Year Yield
+    "wti"  : "CL=F",   # Crude Oil
+}
 
-TODAY = date.today()
-START = TODAY - timedelta(days=365 * 3)
+TODAY  = date.today()
+START  = TODAY - timedelta(days=365*3)
 
-# ───── 데이터 수집 함수 ─────
-@st.cache_data(show_spinner="📥 주가 데이터 다운로드 중…")
-def get_price_series(ticker: str) -> pd.Series:
-    """3년치 조정주가(종가) 시리즈 반환 ― 결측치·예외 처리 포함"""
-    df = yf.download(
-        ticker,
-        start=START,
-        end=TODAY,
-        progress=False,
-        auto_adjust=True    # 'Close' 한 개 열만, 이미 분할‧배당 조정
-    )
-
-    # 1) 빈 DF 방어
+# ───── 데이터 수집 ─────
+@st.cache_data(show_spinner="📥 다운로딩…")
+def get_series(ticker: str) -> pd.Series:
+    df = yf.download(ticker, start=START, end=TODAY,
+                     progress=False, auto_adjust=True)
     if df.empty:
-        st.warning(f"📭 {ticker}: 데이터가 비어 있습니다.")
         return pd.Series(dtype="float64", name=ticker)
-
-    # 2) 멀티인덱스 방어 (해외 일부 티커)
     if isinstance(df.columns, pd.MultiIndex):
         close = df.xs("Close", axis=1, level=0).iloc[:, 0]
     else:
         close = df["Close"]
+    return close.rename(ticker).ffill()
 
-    return close.rename(ticker).ffill()  # 결측치 전방 보간
+# 주가 DF
+prices = pd.concat({n: get_series(t) for n, t in TICKERS.items()}, axis=1)
 
-# ───── 데이터프레임 구성 ─────
-prices = pd.concat(
-    {name: get_price_series(tic) for name, tic in TICKERS.items()},
-    axis=1
-)
-
-# ───── 사이드바/옵션 UI ─────
-st.sidebar.header("⚙️ 설정")
+# ───── 사이드바 ─────
+st.sidebar.header("⚙️  옵션")
 view_mode = st.sidebar.radio(
-    "그래프 값 표시 방식",
-    ("실제 주가 (USD·SAR)", "정규화 (시작값 = 100)"),
+    "그래프 표시",
+    ("실제 주가", "정규화(시작값=100)"),
     index=1
 )
-selected = st.sidebar.multiselect(
-    "표시할 기업 선택",
+sel_stocks = st.sidebar.multiselect(
+    "표시할 기업",
     list(TICKERS.keys()),
     default=list(TICKERS.keys())
 )
 
-# ───── 데이터 가공 ─────
-plot_df = prices[selected]
+# ───── 메인 차트 ─────
+plot_df = prices[sel_stocks]
 if view_mode.startswith("정규화"):
     plot_df = plot_df / plot_df.iloc[0] * 100
+st.line_chart(plot_df, height=550)
 
-# ───── 메인 차트 출력 ─────
-st.line_chart(plot_df, height=600)
-
-# ───── 원본 데이터 확인 ─────
-with st.expander("📄 Raw Data (최근 10행)"):
+with st.expander("📄 Raw Data (tail)"):
     st.dataframe(prices.tail(10))
 
+# ────────────────── 🔮 예측 섹션 ──────────────────
+st.subheader("🔮 미래 주가 예측 (데모)")
+
+if not PROPHET_OK:
+    st.error("`prophet` 라이브러리가 설치되지 않았습니다. "
+             "requirements.txt에 `prophet` 추가 후 재배포하세요.")
+    st.stop()
+
+colF1, colF2 = st.columns(2)
+with colF1:
+    tgt_name = st.selectbox("예측할 종목", list(TICKERS.keys()))
+with colF2:
+    horizon = st.slider("예측 기간 (일)", 7, 180, 30, step=7)
+
+use_macro = st.checkbox("거시경제 변수 포함 (S&P 500, 10Y 금리, WTI)", value=True)
+
+@st.cache_data(show_spinner="🔮 모델 학습 중…")
+def train_prophet(target: str, include_macro: bool):
+    # 대상 주가
+    s = prices[target].dropna().reset_index()
+    s.columns = ["ds", "y"]
+    model = Prophet(daily_seasonality=False, yearly_seasonality=True,
+                    changepoint_prior_scale=0.2)
+    if include_macro:
+        for mname, mtic in MACRO_TICKERS.items():
+            mser = get_series(mtic).reindex(prices.index).ffill().reset_index(drop=True)
+            s[mname] = mser
+            model.add_regressor(mname, standardize=True)
+    model.fit(s)
+    return model, s
+
+model, train_df = train_prophet(tgt_name, use_macro)
+
+# 예측
+future = model.make_future_dataframe(periods=horizon)
+if use_macro:
+    for mname, mtic in MACRO_TICKERS.items():
+        base = get_series(mtic).reindex(prices.index).ffill()
+        last_val = base.iloc[-1]
+        future_vals = pd.concat([base, pd.Series([last_val]*horizon,
+                                                 index=future.tail(horizon).index)])
+        future[mname] = future_vals.values
+
+forecast = model.predict(future)
+
+# ───── 결과 시각화 ─────
+import plotly.graph_objects as go
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=train_df["ds"], y=train_df["y"],
+                         mode="lines", name="Actual"))
+fig.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat"],
+                         mode="lines", name="Forecast"))
+fig.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat_upper"],
+                         mode="lines", name="Upper CI",
+                         line=dict(dash="dash"), opacity=0.3))
+fig.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat_lower"],
+                         mode="lines", name="Lower CI",
+                         line=dict(dash="dash"), opacity=0.3))
+fig.update_layout(height=550, showlegend=True,
+                  title=f"{tgt_name} - Prophet Forecast ({horizon} days)")
+st.plotly_chart(fig, use_container_width=True)
+
+with st.expander("🔎 예측 테이블 (최근 10행)"):
+    st.dataframe(forecast[["ds", "yhat", "yhat_lower", "yhat_upper"]].tail(10))
+
+st.caption("ⓘ 본 예측은 교육용 예시이며, 투자 판단 근거로 사용할 수 없습니다.")
+
 # ────────────────────────────────────────────────────────────────────
-# 끝. 필요한 경우 여기 아래에 향후 예측 모델/성능 지표 등을 추가 가능
+# requirements.txt 예시
 # ────────────────────────────────────────────────────────────────────
+# streamlit>=1.35
+# yfinance
+# pandas
+# prophet       # (설치 시 pystan 포함)
+# plotly
