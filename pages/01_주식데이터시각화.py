@@ -6,12 +6,12 @@ from datetime import datetime, timedelta
 
 st.set_page_config(layout="wide")
 
-st.title("글로벌 시가총액 상위 10개 기업 주가 변동 (최근 3년)")
+st.title("글로벌 시가총액 상위 10개 기업 주가 변동 (2025년 6월 8일 기준 최근 3년)")
 
 @st.cache_data(ttl=3600) # 데이터 캐싱: 1시간마다 업데이트
 def get_top_companies_info():
     # 2025년 6월 현재 기준 (추정치) 글로벌 시가총액 상위 기업 티커
-    # 주의: 실제 시가총액 순위와 티커는 실시간으로 변동되므로,
+    # 실제 시가총액 순위와 티커는 실시간으로 변동되므로,
     # 이 목록은 예시이며, 정확한 최신 정보는 별도 확인이 필요합니다.
     company_tickers = {
         "Microsoft": "MSFT",
@@ -34,8 +34,13 @@ selected_companies = st.multiselect(
     default=list(company_tickers.keys()) # 기본값으로 모든 기업 선택
 )
 
-end_date = datetime.now()
-start_date = end_date - timedelta(days=3*365) # 최근 3년
+# --- 변경된 부분 시작 ---
+# 데이터를 가져올 기준 종료일 설정 (2025년 6월 8일)
+fixed_end_date = datetime(2025, 6, 8)
+# 기준 종료일로부터 3년 전 날짜 계산
+start_date = fixed_end_date - timedelta(days=3*365)
+end_date = fixed_end_date # end_date를 fixed_end_date로 설정
+# --- 변경된 부분 끝 ---
 
 st.write(f"**데이터 조회 기간:** {start_date.strftime('%Y-%m-%d')} ~ {end_date.strftime('%Y-%m-%d')}")
 
@@ -43,12 +48,12 @@ if selected_companies:
     data = pd.DataFrame()
     for company_name in selected_companies:
         ticker = company_tickers[company_name]
-        st.info(f"'{company_name}' ({ticker}) 데이터 가져오는 중...") # 진행 상황 표시
+        st.info(f"'{company_name}' ({ticker}) 데이터 가져오는 중...")
         try:
+            # yfinance에서 주식 데이터를 가져옵니다.
             ticker_data = yf.download(ticker, start=start_date, end=end_date, progress=False)
 
             if not ticker_data.empty:
-                # 데이터를 성공적으로 가져온 경우 컬럼 확인
                 if 'Adj Close' in ticker_data.columns:
                     data[company_name] = ticker_data['Adj Close']
                     st.success(f"'{company_name}' ({ticker}) 데이터 성공적으로 로드 완료.")
@@ -58,14 +63,11 @@ if selected_companies:
                 else:
                     st.warning(f"'{company_name}' ({ticker})에서 'Adj Close' 또는 'Close' 주가 데이터를 찾을 수 없습니다. (사용 가능한 컬럼: {ticker_data.columns.tolist()})")
             else:
-                # 데이터프레임이 비어있는 경우
                 st.warning(f"'{company_name}' ({ticker})의 데이터를 가져왔지만 비어있습니다. 해당 기간에 데이터가 없거나 티커가 잘못되었을 수 있습니다.")
         except Exception as e:
-            # yf.download 자체에서 오류가 발생한 경우
             st.error(f"'{company_name}' ({ticker}) 데이터를 가져오는 중 심각한 오류 발생: {e}")
 
     if not data.empty:
-        # 모든 데이터가 NaN인 컬럼 제거 (데이터가 전혀 없는 기업 제거)
         data = data.dropna(axis=1, how='all')
 
         if not data.empty:
