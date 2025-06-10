@@ -7,16 +7,19 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, r2_score
 
+# Streamlit 페이지 설정은 모든 import 문 바로 다음에 와야 합니다.
+st.set_page_config(layout="wide", page_title="학생 성적 분석 및 예측 시스템")
+
 # --- 설정 및 데이터 생성 ---
-# 과목 이름 영문으로 변경
+# ... (이전 코드와 동일)
 subjects_korean = ['국어', '영어', '수학', '역사', '사회', '과학']
 subjects_english = ['Korean', 'English', 'Math', 'History', 'Social', 'Science']
 subject_map = dict(zip(subjects_korean, subjects_english))
 
 num_students = 150
-num_exams = 10 # 각 과목별 시험 횟수
+num_exams = 10
 
-@st.cache_data # 데이터프레임이 변경되지 않는 한 캐싱하여 성능 향상
+@st.cache_data
 def generate_and_load_data():
     """더미 데이터를 생성하고 DataFrame으로 반환합니다."""
     data = {}
@@ -25,7 +28,6 @@ def generate_and_load_data():
         for subject_kor, subject_eng in subject_map.items():
             for exam_num in range(1, num_exams + 1):
                 column_name = f'{subject_eng}_Exam_{exam_num}'
-                # 각 시험 점수는 0점에서 100점 사이의 정수로 무작위 생성
                 score = np.random.randint(0, 101)
                 if student_name not in data:
                     data[student_name] = {}
@@ -36,9 +38,7 @@ def generate_and_load_data():
 
 df = generate_and_load_data()
 
-# --- Streamlit 앱 구성 ---
-st.set_page_config(layout="wide", page_title="학생 성적 분석 및 예측 시스템")
-st.title('📚 학생 성적 분석 및 예측 시스템')
+st.title('📚 학생 성적 분석 및 예측 시스템') # 이제부터 다른 Streamlit 명령어 사용
 st.write("학생들의 과목별 시험 성적을 분석하고, 다음 시험 성적을 예측합니다.")
 
 # 사이드바 메뉴
