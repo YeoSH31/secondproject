@@ -11,15 +11,15 @@ from sklearn.metrics import mean_absolute_error, r2_score
 st.set_page_config(layout="wide", page_title="학생 성적 분석 및 예측 시스템")
 
 # --- 설정 및 데이터 생성 ---
-# ... (이전 코드와 동일)
+# 과목 이름 영문으로 변경
 subjects_korean = ['국어', '영어', '수학', '역사', '사회', '과학']
 subjects_english = ['Korean', 'English', 'Math', 'History', 'Social', 'Science']
 subject_map = dict(zip(subjects_korean, subjects_english))
 
 num_students = 150
-num_exams = 10
+num_exams = 10 # 각 과목별 시험 횟수
 
-@st.cache_data
+@st.cache_data # 데이터프레임이 변경되지 않는 한 캐싱하여 성능 향상
 def generate_and_load_data():
     """더미 데이터를 생성하고 DataFrame으로 반환합니다."""
     data = {}
@@ -28,6 +28,7 @@ def generate_and_load_data():
         for subject_kor, subject_eng in subject_map.items():
             for exam_num in range(1, num_exams + 1):
                 column_name = f'{subject_eng}_Exam_{exam_num}'
+                # 각 시험 점수는 0점에서 100점 사이의 정수로 무작위 생성
                 score = np.random.randint(0, 101)
                 if student_name not in data:
                     data[student_name] = {}
@@ -38,20 +39,21 @@ def generate_and_load_data():
 
 df = generate_and_load_data()
 
-st.title('📚 학생 성적 분석 및 예측 시스템') # 이제부터 다른 Streamlit 명령어 사용
+# --- Streamlit 앱 구성 ---
+st.title('📚 학생 성적 분석 및 예측 시스템')
 st.write("학생들의 과목별 시험 성적을 분석하고, 다음 시험 성적을 예측합니다.")
 
 # 사이드바 메뉴
-st.sidebar.header('메뉴')
+st.sidebar.header('Menu')
 analysis_type = st.sidebar.radio(
-    "원하는 분석을 선택하세요:",
+    "Select Analysis Type:",
     ('Data Overview', 'Grade Analysis', 'Grade Prediction')
 )
 
 # --- 1. Data Overview (데이터 개요) ---
 if analysis_type == 'Data Overview':
     st.header('📊 Data Overview')
-    st.write("생성된 학생 성적 데이터의 일부를 보여줍니다.")
+    st.write("Displays a portion of the generated student grade data.")
     st.dataframe(df.head())
     st.write(f"Total Students: {df.shape[0]} students")
     st.write(f"Total Exam Items: {df.shape[1]} items")
@@ -64,6 +66,7 @@ if analysis_type == 'Data Overview':
         st.info("No missing values found in the data.")
     else:
         st.warning(f"Missing values found: {df.isnull().sum().sum()}! Further preprocessing may be needed.")
+
 
 # --- 2. Grade Analysis (성적 분석) ---
 elif analysis_type == 'Grade Analysis':
@@ -115,6 +118,45 @@ elif analysis_type == 'Grade Analysis':
                 st.pyplot(fig_line)
                 plt.close(fig_line)
 
+    # --- 시험을 가장 잘 볼 것으로 예측되는 학생 ---
+    st.subheader('🏆 Top Predicted Student for Next Exam (by Subject)')
+    st.write("Based on linear regression prediction, here are the students likely to score highest in the next exam for each subject.")
+
+    top_predicted_students = {}
+
+    for subject_eng in subjects_english:
+        max_predicted_score = -1
+        top_student_name = "N/A"
+
+        for student_name in df.index:
+            exam_columns = [col for col in df.columns if col.startswith(f'{subject_eng}_Exam_')]
+            if len(exam_columns) >= 2: # 최소 2개 이상의 시험 데이터가 있어야 예측 가능
+                subject_scores = df.loc[student_name, exam_columns].astype(float)
+                X = np.array(range(1, len(subject_scores) + 1)).reshape(-1, 1)
+                y = subject_scores.values
+
+                model = LinearRegression()
+                try:
+                    model.fit(X, y)
+                    next_exam_num = num_exams + 1
+                    predicted_score = model.predict(np.array([[next_exam_num]]))
+                    predicted_score = np.clip(predicted_score[0], 0, 100) # 0-100 범위 제한
+
+                    if predicted_score > max_predicted_score:
+                        max_predicted_score = predicted_score
+                        top_student_name = student_name
+                except ValueError:
+                    # 데이터가 너무 적거나 문제가 있는 경우 (예: 모든 점수가 동일하여 분산이 0)
+                    pass # 이 학생은 예측에서 제외
+
+        if top_student_name != "N/A":
+            top_predicted_students[subject_eng] = f'**{top_student_name}** ({max_predicted_score:.2f} points)'
+        else:
+            top_predicted_students[subject_eng] = "No prediction possible (insufficient data for all students)"
+
+    for subject, info in top_predicted_students.items():
+        st.write(f"- **{subject}**: {info}")
+
 
 # --- 3. Grade Prediction (성적 예측) ---
 elif analysis_type == 'Grade Prediction':
@@ -157,7 +199,12 @@ elif analysis_type == 'Grade Prediction':
 
                 # 선형 회귀 모델 학습
                 model = LinearRegression()
-                model.fit(X, y)
+                try:
+                    model.fit(X, y)
+                except ValueError:
+                    # 데이터가 너무 적거나 문제가 있는 경우 (예: 모든 점수가 동일하여 분산이 0)
+                    predictions[subject_eng] = "Prediction not possible (insufficient data variation)"
+                    continue # 다음 과목으로 넘어감
 
                 # 다음 시험 (num_exams + 1) 예측
                 next_exam_num = num_exams + 1
